@@ -16,7 +16,11 @@
 #include "Graph.h"
 
 #define myType int
+#define eps   1e-6//float使用的测试精度
+
 /********using extern to declaration ***********/
+extern long long timestamp;//时间戳********
+
 extern const int m;//ants number
 extern const float beta;//heuristic information weight 
 extern int G;//迭代次数
@@ -30,6 +34,13 @@ extern int traffic_time; // 用以计算速度的时间
 extern const float heur_strat;
 
 extern const int target;//设定初始固定源节点  48//521
+
+extern vector<pair<myType, myType> > curPosition;//每只蚂蚁目前在当前路段的位置
+extern vector<double> velMatrix;//用于存储当前车辆的速度
+extern vector<pair<myType, myType> > curOD;//用于存储当前段的OD，将一个完整的路径划分为很多段，每一段维护一个od对，跨区的时候就是跨区的od对；
+extern vector<myType> block_dest;//所有蚂蚁的目的block，目的是不需要多次getBlockid
+
+
 extern vector<myType> source;//每只蚂蚁的源节点  521
 extern vector<myType> safe_site;//安全的节点  或 目的节点集合
 extern vector<myType> sites;//全部节点的集合
@@ -82,6 +93,7 @@ inline bool isEnd(int p, int num) {
 	else return false;
 }
 
+//返回0-1之间的随机数
 inline float rand_p() {
 	int N = 999;//设置随机数精度
 	LARGE_INTEGER seed;
@@ -109,3 +121,6 @@ inline int get_pos(myType t) {
 		cerr << "get_pos wrong" << endl;
 	return dis;
 }
+
+
+

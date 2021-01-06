@@ -207,124 +207,6 @@ void new_init() {
 	return;
 }
 
-//构建路径*************->
-void routeConstricution() {
-	if (G == 0) return;
-	traffic_time = 1;
-	vector<bool>::iterator it = find(ant_dest.begin(), ant_dest.end(), false);
-	if (it == ant_dest.end()) return;//是否全到达终点
-	ant_solution.clear();
-	ant_solution.resize(m);
-	myType current_pos;
-	myType before_pos;
-	//vector<int> v;//存储每只蚂蚁路径
-	//for (int i = 0; i < m; ++i) {//i表示蚂蚁编号
-	//	if (ant_dest[i] != true) {
-	//		int current_pos = source[i];//当前节点
-	//		v.push_back(current_pos);
-	//		while (!isSafe(current_pos)) {
-	//			float tmp = rand_p();//轮盘赌
-	//			int choice = 0;//要选择的节点
-	//			float sump = 0.0;
-	//			while (sump <= tmp) {
-	//				sump += trans_mtx[current_pos][choice++].second;
-	//			}//生成0时候默认选择第一节点
-	//			current_pos = trans_mtx[current_pos][--choice].first;//选择节点
-	//			v.push_back(current_pos);
-	//		}
-	//		ant_solution.push_back(v);//存储每只蚂蚁的路径
-	//		ant_dest[i] = true;
-	//		v.clear();
-	//	}
-	//	else {
-	//		continue;
-	//	}
-	//}
-	fit_mtx.clear();
-	fit_mtx.resize(m);
-	for (int j = 0; j < m; ++j) {
-		current_pos = source[j];//当前节点
-		ant_solution[j].push_back(current_pos);
-	}
-	for (; find(ant_dest.begin(), ant_dest.end(), false) != ant_dest.end(); ++traffic_time) {//是否全部到达终点
-		for (int i = 0; i < m; ++i) {
-			if (ant_dest[i] != true) {
-				current_pos = ant_solution[i].back();
-				before_pos = current_pos;
-				//轮盘赌选择节点
-				int choice_test = 0;
-				do {
-					if (choice_test++ > 50) {
-						cerr << choice_test << " ::choice_test erro: " << before_pos << "****" << current_pos << endl;
-						current_pos = before_pos;
-						break;
-					}
-					current_pos = before_pos;
-					float tmp = rand_p();//轮盘赌
-					int choice = 0;//要选择的节点
-					float sump = 0.0;
-					if (tmp == 0) {
-						current_pos = trans_mtx[get_pos(current_pos)][0].first;
-					}
-					else {
-						while (sump < tmp) {
-							sump += trans_mtx[get_pos(current_pos)][choice++].second;
-						}//生成0时候默认选择第一节点
-						current_pos = trans_mtx[get_pos(current_pos)][--choice].first;//选择节点
-					}
-				} while (current_pos == before_pos || !isDensityOk(before_pos, current_pos) || current_pos == target);
-
-				ant_solution[i].push_back(current_pos);
-
-				if (isEnd(current_pos, i)) {
-					ant_dest[i] = true;
-				}
-				else {
-					density(before_pos, current_pos);
-				}//走入新边  最后一段还未处理 安全路径之前  安全之路不计算拥挤度
-
-				if (traffic_time != 1) {
-					density(ant_solution[i].at(ant_solution[i].size() - 3), before_pos, -1);//上一条边 走出
-					updateHeur(ant_solution[i].at(ant_solution[i].size() - 3), before_pos);// 更新启发式  上一次经过的路径
-					updateNodeTrans(ant_solution[i].at(ant_solution[i].size() - 3));// 更新上上 节点的 转移概率
-				}
-
-				float vel = velocityCompute(before_pos, current_pos);
-				if (before_pos == current_pos) fit_mtx[i] += 1;
-				else fit_mtx[i] += g.getweight(before_pos, current_pos) / vel;
-				updateLocalPher(before_pos, current_pos);
-				updateHeur(before_pos, current_pos);
-				updateNodeTrans(before_pos);
-				//判断是否到达传送点
-				int cur_tmp_safe = get_pos(safe_site[i]);
-				if (current_pos == transmit_p[cur_tmp_safe][0]) {
-					auto k = find(short_p[cur_tmp_safe].begin(), short_p[cur_tmp_safe].end(), current_pos);
-					int cur_tmp_pos = *(k++ + 1);//迭代器为end的时候不能增加
-					while (cur_tmp_pos != transmit_p[cur_tmp_safe][1]) {
-						ant_solution[i].push_back(cur_tmp_pos);
-						cur_tmp_pos = *(++k);
-					}
-					ant_solution[i].push_back(transmit_p[cur_tmp_safe][1]);
-					//判断是否到达safe place
-					if (isEnd(transmit_p[cur_tmp_safe][1], i)) {
-						ant_dest[i] = true;
-					}
-				}
-			}//end if ant_dest true
-			else continue;
-		}// end i
-		//输出本代选择的节点
-		//for (int i = 0; i < m; ++i) {
-		//	cout << ant_solution[i].back() << endl;
-		//}
-	}
-
-	ant_dest.clear();
-	ant_dest.resize(m);
-	G--;//代数增加
-	return;
-}
-
 //适应度计算  只计算路径长度
 vector<float> fitCompute() {
 	vector<float> fittness;
@@ -549,4 +431,299 @@ bool graphPreprocess(int v, int num, vector<vector<myType> >& p, vector<vector<m
 		res.push_back(tmb);
 	}
 	return true;
+}
+
+
+//并行版本  构建路径*************->
+void routeConstricution() {
+	if (G == 0) return;
+	traffic_time = 1;
+	vector<bool>::iterator it = find(ant_dest.begin(), ant_dest.end(), false);
+	if (it == ant_dest.end()) return;//是否全到达终点
+	ant_solution.clear();
+	ant_solution.resize(m);
+	myType current_pos;//当前节点
+	myType before_pos;
+	//vector<int> v;//存储每只蚂蚁路径
+	//for (int i = 0; i < m; ++i) {//i表示蚂蚁编号
+	//	if (ant_dest[i] != true) {
+	//		int current_pos = source[i];//当前节点
+	//		v.push_back(current_pos);
+	//		while (!isSafe(current_pos)) {
+	//			float tmp = rand_p();//轮盘赌
+	//			int choice = 0;//要选择的节点
+	//			float sump = 0.0;
+	//			while (sump <= tmp) {
+	//				sump += trans_mtx[current_pos][choice++].second;
+	//			}//生成0时候默认选择第一节点
+	//			current_pos = trans_mtx[current_pos][--choice].first;//选择节点
+	//			v.push_back(current_pos);
+	//		}
+	//		ant_solution.push_back(v);//存储每只蚂蚁的路径
+	//		ant_dest[i] = true;
+	//		v.clear();
+	//	}
+	//	else {
+	//		continue;
+	//	}
+	//}
+	fit_mtx.clear();
+	fit_mtx.resize(m);
+	for (int j = 0; j < m; ++j) {
+		current_pos = source[j];//当前节点
+		ant_solution[j].push_back(current_pos);
+	}
+	for (; find(ant_dest.begin(), ant_dest.end(), false) != ant_dest.end(); ++traffic_time) {//是否全部到达终点
+		for (int i = 0; i < m; ++i) {
+			if (ant_dest[i] != true) {
+				current_pos = ant_solution[i].back();
+				before_pos = current_pos;
+				//轮盘赌选择节点
+				int choice_test = 0;
+				do {
+					if (choice_test++ > 50) {
+						cerr << choice_test << " ::choice_test erro: " << before_pos << "****" << current_pos << endl;
+						current_pos = before_pos;
+						break;
+					}
+					current_pos = before_pos;
+					float tmp = rand_p();//轮盘赌
+					static int choice = 0;//要选择的节点
+					float sump = 0.0;
+					if (tmp == 0) {
+						current_pos = trans_mtx[get_pos(current_pos)][0].first;
+					}
+					else {
+						while (sump < tmp) {
+							sump += trans_mtx[get_pos(current_pos)][choice++].second;
+						}//生成0时候默认选择第一节点
+						current_pos = trans_mtx[get_pos(current_pos)][--choice].first;//选择节点
+					}
+				} while (current_pos == before_pos || !isDensityOk(before_pos, current_pos) || current_pos == target);
+
+				ant_solution[i].push_back(current_pos);
+
+				if (isEnd(current_pos, i)) {
+					ant_dest[i] = true;
+				}
+				else {
+					density(before_pos, current_pos);
+				}//走入新边  最后一段还未处理 安全路径之前  安全之路不计算拥挤度
+
+				if (traffic_time != 1) {
+					density(ant_solution[i].at(ant_solution[i].size() - 3), before_pos, -1);//上一条边 走出
+					updateHeur(ant_solution[i].at(ant_solution[i].size() - 3), before_pos);// 更新启发式  上一次经过的路径
+					updateNodeTrans(ant_solution[i].at(ant_solution[i].size() - 3));// 更新上上 节点的 转移概率
+				}
+
+				float vel = velocityCompute(before_pos, current_pos);
+				if (before_pos == current_pos) fit_mtx[i] += 1;
+				else fit_mtx[i] += g.getweight(before_pos, current_pos) / vel;
+				updateLocalPher(before_pos, current_pos);
+				updateHeur(before_pos, current_pos);
+				updateNodeTrans(before_pos);
+				//判断是否到达传送点
+				int cur_tmp_safe = get_pos(safe_site[i]);
+				if (current_pos == transmit_p[cur_tmp_safe][0]) {
+					auto k = find(short_p[cur_tmp_safe].begin(), short_p[cur_tmp_safe].end(), current_pos);
+					int cur_tmp_pos = *(k++ + 1);//迭代器为end的时候不能增加
+					while (cur_tmp_pos != transmit_p[cur_tmp_safe][1]) {
+						ant_solution[i].push_back(cur_tmp_pos);
+						cur_tmp_pos = *(++k);
+					}
+					ant_solution[i].push_back(transmit_p[cur_tmp_safe][1]);
+					//判断是否到达safe place
+					if (isEnd(transmit_p[cur_tmp_safe][1], i)) {
+						ant_dest[i] = true;
+					}
+				}
+			}//end if ant_dest true
+			else continue;
+		}// end i
+		//输出本代选择的节点
+		//for (int i = 0; i < m; ++i) {
+		//	cout << ant_solution[i].back() << endl;
+		//}
+	}
+	ant_dest.clear();
+	ant_dest.resize(m);
+	G--;//代数增加
+	return;
+}
+
+//串行版本构建路径
+void routeConstructSerial() {
+	if (G == 0) return;
+	ant_solution.clear();
+	ant_solution.resize(m);
+	myType current_pos;//当前节点
+	myType before_pos;
+	for (; find(ant_dest.begin(), ant_dest.end(), false) != ant_dest.end(); ++traffic_time) {//是否全部到达终点
+		for (int i = 0; i < m; ++i) {
+			while(ant_dest[i] != true) {
+				current_pos = ant_solution[i].back();
+				before_pos = current_pos;
+				//轮盘赌选择节点
+				int choice_test = 0;
+				do {
+					if (choice_test++ > 50) {
+						cerr << choice_test << " ::choice_test erro: " << before_pos << "****" << current_pos << endl;
+						current_pos = before_pos;
+						break;
+					}
+					current_pos = before_pos;
+					float tmp = rand_p();//轮盘赌
+					static int choice = 0;//要选择的节点
+					float sump = 0.0;
+					if (tmp == 0) {
+						current_pos = trans_mtx[get_pos(current_pos)][0].first;
+					}
+					else {
+						while (sump < tmp) {
+							sump += trans_mtx[get_pos(current_pos)][choice++].second;
+						}//生成0时候默认选择第一节点
+						current_pos = trans_mtx[get_pos(current_pos)][--choice].first;//选择节点
+					}
+				} while (current_pos == before_pos || !isDensityOk(before_pos, current_pos) || current_pos == target);
+
+				ant_solution[i].push_back(current_pos);
+
+				density(before_pos, current_pos);//走入新边  最后一段还未处理 安全路径之前  安全之路不计算拥挤度
+
+				float vel = velocityCompute(before_pos, current_pos);
+				if (before_pos == current_pos) fit_mtx[i] += 1;
+				else fit_mtx[i] += g.getweight(before_pos, current_pos) / vel;
+				updateLocalPher(before_pos, current_pos);
+				updateHeur(before_pos, current_pos);
+				updateNodeTrans(before_pos);//因为一条边的流量发生变化，所有与此相邻边都会变化
+				//判断是否到达safe place
+				if (isEnd(current_pos, i)) {
+					ant_dest[i] = true;
+				}
+
+			}//end if ant_dest true
+		}// end i
+		//输出本代选择的节点
+		//for (int i = 0; i < m; ++i) {
+		//	cout << ant_solution[i].back() << endl;
+		//}
+	}
+
+}
+//获取两个block之间的trunk，之后可以用轮盘赌选择，相邻block
+vector<int> getBlockTrunk(int b1,int b2) {
+
+}
+
+//旧版本：：获取下一个相邻的block，返回值为图类指针 UndiGraph<myType, float>*，可以根据轮盘赌选择
+//参数列表b1为当前block，b2为当前车辆的最终目的block
+int getNextBlock(int b1,int b2) {
+
+}
+
+//2021.1.6 更新
+//暂时不考虑时间戳
+void routeConstructionByTimestamp() {
+	if (G == 0) return;
+	//traffic_time = 1;
+	//vector<bool>::iterator it = find(ant_dest.begin(), ant_dest.end(), false);
+	//if (it == ant_dest.end()) return;//是否全到达终点
+	ant_solution.clear();
+	ant_solution.resize(m);
+	myType current_pos;//当前节点
+	myType before_pos;
+	//每一次循环timesta++，
+	while (find(ant_dest.begin(), ant_dest.end(), false) != ant_dest.end()) {//判断是否全到终点
+		timestamp++;//时间戳增加
+		for (int i = 0; i < m; ++i) {
+			if (ant_dest[i] == true) continue;
+			current_pos = ant_solution[i].back();
+			before_pos = current_pos;
+			if (timestamp == 1) {//判断是否为边界情况
+
+			}
+		}
+	}
+}
+
+//返回值为目前的节点，在接收处判断，如果id与之前相同，则不push进route结果中; 同时需要处理的还有，如果遇到路口则将剩余时间直接丢弃
+//orgn为当前路段的源点，dstn为当前路段的终点，antId为目前蚂蚁的id，time目前保留使用
+myType getNextWay(myType orgn, myType dstn,int antId,int timeStap, double time = 1) {
+	//更新curPosition，如果越过边界，则更新下一条路径；如果是区块的边界，则进行跨区选择
+	int current = curPosition[antId].first + velMatrix[antId];
+	if (curPosition[antId].second <= current) {//选定下一条路是什么，然后修改curPosition当前值为0
+		curPosition[antId].first = 0;
+		if (dstn == curOD[antId].second) {
+			//跨区,目标trunkline由入区或开始时设定，不可修改
+			//暂时不关心trunkline的拥挤程度
+			int curblock_id = g.getBlockid(dstn);
+			int nexblock_id = getNextBlock(curblock_id, block_dest[antId]);
+			auto curTrunk = selctTrunkLine(curblock_id, nexblock_id, dstn);
+			//不关心车流量问题
+		}
+		else {//不需要跨区
+			auto curRoute = selectNextRoute(orgn, dstn);
+			ant_solution[antId].push_back(curRoute.first);
+			curPosition[antId].second = curRoute.second;//将当前路段的权重，更新
+			curPosition[antId].first = 0;
+			/***********************/
+			//此处是因为ant_solution的越界问题，所以需要判断，待思考
+			if (timeStap != 1) {
+				density(ant_solution[antId].at(ant_solution[antId].size() - 3), dstn, -1);//上一条边 走出,-1表示走出
+				density(dstn, curRoute.first);//当前边走入
+				//更新启发式，或可以移到每个timestamp
+				updateHeur(ant_solution[antId].at(ant_solution[antId].size() - 3), dstn);// 更新启发式  上一次经过的路径
+				updateNodeTrans(ant_solution[antId].at(ant_solution[antId].size() - 3));// 更新上上 节点的 转移概率
+			}
+			else {
+				density(dstn, curRoute.first);//当前边走入
+			}
+		}
+	}
+	else {//如果没有走到当前路段的尽头，仍旧返回当前路段的终点
+		curPosition[antId].first = current;
+		return dstn;
+	}
+}
+
+
+//需要切换block的情况下，切换这个
+//返回trunkline的目的节点，first为节点，second为权重
+//参数说明，b1为当前block，b2为目标block,vertex为目前所在b1的边界节点
+//目前的限制为，两个区之间
+pair<myType, myType> selctTrunkLine(int b1,int b2, int vertex) {
+	g.getTrunkLine();
+}
+
+
+//不需要切换block的情况下，调用这个
+//目前是轮盘赌选择方法
+//返回trunkline的目的节点，first为节点，second为权重
+pair<myType, myType> selectNextRoute(int before_pos,int current_pos) {
+	int tmp_pos = current_pos;
+	//轮盘赌选择节点
+	int choice_test = 0;
+	do {
+		if (choice_test++ > 50) {
+			cerr << choice_test << " ::choice_test erro: " << before_pos << "****" << current_pos << endl;
+			current_pos = before_pos;
+			break;
+		}
+		//current_pos = before_pos;
+		//need to be test*************************   choice eps tmp
+		float tmp = rand_p();//轮盘赌
+		static int choice = 0;//要选择的节点
+		float sump = 0.0;
+		if (tmp < eps) {//通过eps来判断float型是否趋近于0
+			tmp_pos = trans_mtx[get_pos(current_pos)][choice].first;//生成0时候默认选择第0节点
+		}
+		else {
+			while (sump < tmp) {
+				sump += trans_mtx[get_pos(current_pos)][choice++].second;
+			}
+			tmp_pos = trans_mtx[get_pos(current_pos)][--choice].first;//选择节点
+		}
+	} while (tmp_pos == before_pos || !isDensityOk(current_pos,tmp_pos ) || tmp_pos == target);
+	int cur_weight = g.getweight(current_pos,tmp_pos);
+	return pair<myType, myType>{tmp_pos, cur_weight};
 }
