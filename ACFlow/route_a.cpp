@@ -558,58 +558,40 @@ void routeConstructSerial() {
 	ant_solution.resize(m);
 	myType current_pos;//当前节点
 	myType before_pos;
-	for (; find(ant_dest.begin(), ant_dest.end(), false) != ant_dest.end(); ++traffic_time) {//是否全部到达终点
-		for (int i = 0; i < m; ++i) {
-			while(ant_dest[i] != true) {
-				current_pos = ant_solution[i].back();
-				before_pos = current_pos;
-				//轮盘赌选择节点
-				int choice_test = 0;
-				do {
-					if (choice_test++ > 50) {
-						cerr << choice_test << " ::choice_test erro: " << before_pos << "****" << current_pos << endl;
-						current_pos = before_pos;
-						break;
-					}
-					current_pos = before_pos;
-					float tmp = rand_p();//轮盘赌
-					static int choice = 0;//要选择的节点
-					float sump = 0.0;
-					if (tmp == 0) {
-						current_pos = trans_mtx[get_pos(current_pos)][0].first;
-					}
-					else {
-						while (sump < tmp) {
-							sump += trans_mtx[get_pos(current_pos)][choice++].second;
-						}//生成0时候默认选择第一节点
-						current_pos = trans_mtx[get_pos(current_pos)][--choice].first;//选择节点
-					}
-				} while (current_pos == before_pos || !isDensityOk(before_pos, current_pos) || current_pos == target);
+	for (int i = 0; i < m; ++i) {
+		while(ant_dest[i] != true) {//当前蚂蚁是否到达终点
+			current_pos = ant_solution[i].back();
+			before_pos = current_pos;
+			int pre_before_pos;
+			//上一条边的起始节点，例如上一条边为A-B，此处pre_before_pos为A；
+			if (ant_solution[i].size() > 1) pre_before_pos = ant_solution[i][ant_solution[i].size() - 2];
+			else pre_before_pos = -1;
+			
+			current_pos = getNextWaySerial(0, 0, i, before_pos, pre_before_pos);
+			ant_solution[i].push_back(current_pos);
 
-				ant_solution[i].push_back(current_pos);
+			density(before_pos, current_pos);//走入新边  最后一段还未处理 安全路径之前  安全之路不计算拥挤度
 
-				density(before_pos, current_pos);//走入新边  最后一段还未处理 安全路径之前  安全之路不计算拥挤度
+			float vel = velocityCompute(before_pos, current_pos);
+			if (before_pos == current_pos) fit_mtx[i] += 1;//此处为原地停等
+			else fit_mtx[i] += g.getweight(before_pos, current_pos) / vel;
+			updateLocalPher(before_pos, current_pos);
+			updateHeur(before_pos, current_pos);//更新
+			updateNodeTrans(before_pos);//因为一条边的流量发生变化，所有与此相邻边都会变化
+			//判断是否到达safe place
+			if (isEnd(current_pos, i)) {
+				ant_dest[i] = true;
+			}
 
-				float vel = velocityCompute(before_pos, current_pos);
-				if (before_pos == current_pos) fit_mtx[i] += 1;
-				else fit_mtx[i] += g.getweight(before_pos, current_pos) / vel;
-				updateLocalPher(before_pos, current_pos);
-				updateHeur(before_pos, current_pos);
-				updateNodeTrans(before_pos);//因为一条边的流量发生变化，所有与此相邻边都会变化
-				//判断是否到达safe place
-				if (isEnd(current_pos, i)) {
-					ant_dest[i] = true;
-				}
-
-			}//end if ant_dest true
-		}// end i
-		//输出本代选择的节点
-		//for (int i = 0; i < m; ++i) {
-		//	cout << ant_solution[i].back() << endl;
-		//}
-	}
-
+		}//end if ant_dest true
+	}// end i
+	//输出本代选择的节点
+	//for (int i = 0; i < m; ++i) {
+	//	cout << ant_solution[i].back() << endl;
+	//}
 }
+
+
 //获取两个block之间的trunk，之后可以用轮盘赌选择，相邻block
 vector<int> getBlockTrunk(int b1,int b2) {
 
@@ -646,9 +628,31 @@ void routeConstructionByTimestamp() {
 	}
 }
 
+//不考虑时间戳
+myType getNextWaySerial(myType orgn, myType dstn, int antId,int cur,int pre) {
+	//更新curPosition，如果越过边界，则更新下一条路径；如果是区块的边界，则进行跨区选择
+
+	if (dstn == curOD[antId].second) {
+		//跨区,目标trunkline由入区或开始时设定，不可修改
+		//暂时不关心trunkline的拥挤程度
+		int curblock_id = g.getBlockid(dstn);
+		int nexblock_id = getNextBlock(curblock_id, block_dest[antId]);
+		auto curTrunk = selctTrunkLine(curblock_id, nexblock_id, dstn);
+		return curTrunk.second;//此处待完善
+	}
+	else {//不需要跨区
+		auto curRoute = selectNextRoute(pre, cur);
+		//ant_solution[antId].push_back(curRoute.first);
+		//density(dstn, curRoute.first);//当前边走入  用于流量计算
+		return curRoute.first;
+	}
+
+
+}
+
 //返回值为目前的节点，在接收处判断，如果id与之前相同，则不push进route结果中; 同时需要处理的还有，如果遇到路口则将剩余时间直接丢弃
 //orgn为当前路段的源点，dstn为当前路段的终点，antId为目前蚂蚁的id，time目前保留使用
-myType getNextWay(myType orgn, myType dstn,int antId,int timeStap, double time = 1) {
+myType getNextWayByTimestamp(myType orgn, myType dstn,int antId,int timeStap, double time = 1) {
 	//更新curPosition，如果越过边界，则更新下一条路径；如果是区块的边界，则进行跨区选择
 	int current = curPosition[antId].first + velMatrix[antId];
 	if (curPosition[antId].second <= current) {//选定下一条路是什么，然后修改curPosition当前值为0
